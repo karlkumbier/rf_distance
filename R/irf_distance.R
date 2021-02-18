@@ -39,9 +39,6 @@ dist_forest_irf <- function(fit, x, ntree=NULL, n.core=1) {
   return(dmat)
 }
 
-d1 = dist_tree_irf(read.forest, 1, grid)
-d2 = dist_tree_irf_2(read.forest, 1, grid)
-
 dist_tree_irf <- function(read.forest, k, grid=NULL) {
   # Compute pairwise sirf distance for tree-k.
   #
