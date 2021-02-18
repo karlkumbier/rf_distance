@@ -25,7 +25,7 @@ dist_forest_rf <- function(fit, x) {
   grid <- filter(grid, Var1 > Var2)
 
   # Compute pairwise distances over each node in a tree
-  rf.dist <- apply(leaf.nodes, MAR=2, dist_tree_rf)
+  rf.dist <- apply(leaf.nodes, MAR=2, dist_tree_rf, grid=grid)
   rf.dist <- rowMeans(rf.dist)
 
   # Average across trees in the rf  

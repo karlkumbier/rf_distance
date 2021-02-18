@@ -15,8 +15,8 @@
 #' @export
 #'
 #' @importFrom iRF readForest
-#' @importFrom Matrix t Matrix
-dist_forest_irf <- function(fit, x, n.core=1) {
+#' @importFrom Matrix t Matrix rowMeans
+dist_forest_irf <- function(fit, x, ntree=NULL, n.core=1) {
 
   # Pass observations through fitted RF to generate node membership matrix
   read.forest <- readForest(fit$rf.list, x, n.core=n.core, oob.importance=FALSE)
@@ -26,7 +26,7 @@ dist_forest_irf <- function(fit, x, n.core=1) {
   grid <- filter(grid, Var1 > Var2)
 
   # Compute distance between all pairs within each tree and average
-  ntree <- max(read.forest$tree.info$tree)
+  if (is.null(ntree)) ntree <- max(read.forest$tree.info$tree)
   dist.forest <- lapply(1:ntree, dist_tree_irf, read.forest=read.forest, grid=grid)
   rf.dist <- Reduce('+', dist.forest) / ntree
 
@@ -39,6 +39,9 @@ dist_forest_irf <- function(fit, x, n.core=1) {
   return(dmat)
 }
 
+d1 = dist_tree_irf(read.forest, 1, grid)
+d2 = dist_tree_irf_2(read.forest, 1, grid)
+
 dist_tree_irf <- function(read.forest, k, grid=NULL) {
   # Compute pairwise sirf distance for tree-k.
   #
@@ -46,10 +49,7 @@ dist_tree_irf <- function(read.forest, k, grid=NULL) {
   #   read.forest: output of iRF::readForest.
   #   k: tree to calculate distances for
   #   grid
-  nf <- read.forest$node.feature
-  no <- read.forest$node.obs
-  ti <- read.forest$tree.info
-
+  
   if (is.null(grid)) {
     # Generate all pairwise combinations of observations to compute distance over
     grid <- expand.grid(1:nrow(read.forest$node.obs), 1:nrow(read.forest$node.obs))
@@ -57,18 +57,17 @@ dist_tree_irf <- function(read.forest, k, grid=NULL) {
   }
   
   # Filter to nodes from given tree
-  id.k <- ti$tree == k
-  nf.k <- nf[id.k,] != 0
-  dist.k.intersect <- nf.k %*% t(nf.k) 
-  dist.k.union <- ncol(nf.k) - (1 - nf.k) %*% t(1 - nf.k)
-  dist.k <- 1 - dist.k.intersect / dist.k.union
+  id.k <- read.forest$tree.info$tree == k
+  nf.k <- read.forest$node.feature[id.k,] != 0
+    
+  # Map observation pair indices to leaf node pair indices
+  no.k <- t(read.forest$node.obs[,id.k])@i + 1
+  no.ki <- no.k[grid[,1]]
+  no.kj <- no.k[grid[,2]]
   
-  # Compute distance between nodes of given tree
-  pnode <- ncol(dist.k)
-  dist.k.vec <- c(dist.k)[[1]]
-  
-  # Map node distances to observation distances
-  no.k <- t(no[,id.k])@i + 1
-  idcs <- no.k[grid[,1]] + pnode * (no.k[grid[,2]] - 1)
-  return(dist.k.vec[idcs])
+  # Compoute intersect over union for pairwise ints
+  nf.intersect <- Matrix::rowMeans(nf.k[no.ki,] & nf.k[no.kj,])
+  nf.union <- Matrix::rowMeans(nf.k[no.ki,] | nf.k[no.kj,])
+
+  return(1 - nf.intersect / nf.union)
 }
