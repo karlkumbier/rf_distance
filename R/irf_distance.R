@@ -17,79 +17,120 @@
 #' @importFrom iRF readForest
 #' @importFrom Matrix t Matrix rowMeans
 #' @importFrom parallel mclapply
-#' @importFrom BBmisc chunk
 #' 
 # TODO: compare rf to irf with one selected node from node.feature
 # TODO: subset to nodes based on RF weight
-dist_forest_irf <- function(fit, x, read.forest=NULL, n.core=1) {
+# TODO: 1 hrs
+# TODO: rcpp implemnentation 
+dist_forest_irf <- function(fit, x, rf=NULL, n.core=1) {
 
-  
   # Pass observations through fitted RF to generate node membership matrix
-  if (is.null(read.forest)) {
-    read.forest <- readForest(fit$rf.list, x, n.core=n.core, oob.importance=FALSE)
+  if (is.null(rf)) {
+    rf <- readForest(fit$rf.list, x, n.core=n.core, oob.importance=FALSE)
   }
 
   # Generate all pairwise combinations of observations to compute distance over
-  grid <- expand.grid(1:nrow(x), 1:nrow(x))
-  grid <- filter(grid, Var1 > Var2)
-
+  n <- nrow(x)
+  g1 = rep(1:n, times=((1:n) - 1))
+  g2 = unlist(lapply(1:(n-1), function(i) 1:i), use.names=FALSE)
+  
   # Appears to be faster than sparse matrix operations....
-  read.forest$node.feature <- as.matrix(read.forest$node.feature) != 0
+  rf$node.feature <- as.matrix(rf$node.feature) != 0
   
   # Compute distance between all pairs within each tree and average
-  ntree <- max(read.forest$tree.info$tree)
-  #tree.blocks <- chunk(1:ntree, n.chunks=n.core)
   
-  dist.forest <- lapply(1:ntree, dist_tree_irf, 
-                        read.forest=read.forest, 
-                        grid=grid)
+  ntree <- max(rf$tree.info$tree)
   
-  dist.forest <- 1 - Reduce('+', dist.forest) / ntree
+  # TODO: implement in rcpp for optimization
+  dist.forest <- numeric(length(g1))
+  for (k in 1:ntree) {
+    dist.forest <- dist.forest + dist_tree_irf(rf, k, g1, g2)
+  }
+  
+
+  dist.forest <- dist.forest / ntree
+  dist.forest <- 1 - dist.forest
+  
   # TODO: check that this is returning correct distances - unit test
 
   # Reformat as distance matrix
-  n <- nrow(read.forest$node.obs)
   dmat <- matrix(0, nrow=n, ncol=n)
+  # TODO: replace lower.tri with indices
   dmat[lower.tri(dmat, diag=FALSE)] <- dist.forest
   dmat <- dmat + t(dmat)
+
   
   return(dmat)
-  
+
 }
 
-dist_trees_irf <- function(read.forest, k, grid=NULL) {
-  # Wrapper function to run dist_tree_irf over multiple trees
-  out <- lapply(k, dist_tree_irf, read.forest=read.forest, grid=grid)
-  return(out)
-}
-
-dist_tree_irf <- function(read.forest, k, grid=NULL) {
+dist_tree_irf <- function(rf, k, g1, g2) {
   # Compute pairwise sirf distance for tree-k.
   #
   # Args:
-  #   read.forest: output of iRF::readForest.
+  #   rf: output of iRF::readForest.
   #   k: tree to calculate distances for
-  #   grid
-  
-  if (is.null(grid)) {
-    # Generate all pairwise combinations of observations to compute distance over
-    grid <- expand.grid(1:nrow(read.forest$node.obs), 1:nrow(read.forest$node.obs))
-    grid <- filter(grid, Var1 > Var2)
-  }
   
   # Filter to nodes from given tree
-  id.k <- read.forest$tree.info$tree == k
+  id.k <- rf$tree.info$tree == k
 
   # Map observation pair indices to leaf node pair indices
-  no.k <- t(read.forest$node.obs[,id.k])@i + 1
+  no.k <- t(rf$node.obs[,id.k])@i + 1
 
   # Compute intersect over union across leaf nodes  
-  nf.t <- t(read.forest$node.feature[id.k,])
-  k.intersect <- (read.forest$node.feature[id.k,]) %*% nf.t 
-  k.union <- sum(id.k) - (!read.forest$node.feature[id.k,]) %*% !nf.t
+  nf.t <- t(rf$node.feature[id.k,])
+  k.intersect <- (rf$node.feature[id.k,]) %*% nf.t 
+  k.union <- sum(id.k) - (!rf$node.feature[id.k,]) %*% !nf.t
   dist.k <- k.intersect / k.union
   pnode <- ncol(dist.k)
+  return(dist.k[no.k[g1] + pnode * (no.k[g2] - 1)])
+}
+
+Rcpp::sourceCpp('~/github/arva/clustering_021720/scripts/test.cpp')
+dist_forest_irf_cpp <- function(fit, x, rf=NULL, n.core=1) {
   
-  return(dist.k[no.k[grid[,1]] + pnode * (no.k[grid[,2]] - 1)])
+  # Pass observations through fitted RF to generate node membership matrix
+  if (is.null(rf)) {
+    rf <- readForest(fit$rf.list, x, n.core=n.core, oob.importance=FALSE)
+  }  
+  
+  # Read out node feature input
+  nf <- as.matrix(rf$node.feature != 0)
+  
+  # Read out tree indices
+  ntree <- fit$rf.list$num.trees
+  trees <- rf$tree.info$tree
+  tree.id <- sapply(1:ntree, function(k) min(which(trees == k)))
+  
+  
+  # Read node.obs output
+  no.t <- t(rf$node.obs)
+  no <- t(matrix(no.t@i, ncol=nrow(x)))
+  n.node.tree <- cumsum(c(0, diff(tree.id)))
+  adj <- matrix(rep(n.node.tree, each=nrow(x)), nrow=nrow(x)) 
+  no <- no - adj  
+  
+  # adjust tree indexing for rf distance
+  tree.id <- c(tree.id - 2, length(trees) - 1)
+  
+  # Initialize grid for pairwise ints
+  n <- nrow(x)
+  g1 = rep(1:n, times=((1:n) - 1)) - 1
+  g2 = unlist(lapply(1:(n-1), function(i) 1:i), use.names=FALSE) - 1
+  
+  # Compute distance
+  dist.forest <- forestDist(no, nf, tree.id, g1, g2)
+  dist.forest <- dist.forest / ntree
+  dist.forest <- 1 - dist.forest
+  
+  
+  # TODO: check that this is returning correct distances - unit test
+  
+  # Reformat as distance matrix
+  dmat <- matrix(0, nrow=n, ncol=n)
+  # TODO: replace lower.tri with indices
+  dmat[lower.tri(dmat, diag=FALSE)] <- dist.forest
+  dmat <- dmat + t(dmat)
+  return(dmat)
 }
 
