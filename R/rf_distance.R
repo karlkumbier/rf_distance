@@ -18,7 +18,7 @@
 dist_forest_rf <- function(fit, x) {
 
   # Pass data points through rf to generate leaf node membership
-  leaf.nodes <- predict(fit$rf.list, x, type='terminalNodes')$predictions
+  leaf.nodes <- predict(fit, x, type='terminalNodes')$predictions
 
   # Generate all pairwise combinations of observations to compute distance over
   grid <- expand.grid(1:nrow(x), 1:nrow(x))
@@ -36,14 +36,7 @@ dist_forest_rf <- function(fit, x) {
   return(dmat)
 }
 
-dist_tree_rf <- function(leaf.nodes, grid=NULL) {
-  
-  if (is.null(grid)) {
-    # Generate all pairwise combinations of observations to compute distance over
-    grid <- expand.grid(1:length(leaf.nodes), 1:length(leaf.nodes))
-    grid <- filter(grid, Var1 > Var2)
-  }
-
+dist_tree_rf <- function(leaf.nodes, grid) {
   dmat <- as.numeric(leaf.nodes[grid[,1]] != leaf.nodes[grid[,2]])
   return(dmat)
 }

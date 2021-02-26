@@ -74,7 +74,6 @@ dist_forest_irf <- function(fit, x, rf=NULL, n.core=1) {
 #' @importFrom Matrix t Matrix rowMeans
 #' @importFrom parallel mclapply
 #' 
-# TODO: unit test
 # TODO: replace lower.tri for optimization
 # TODO: subset to nodes based on RF weight
 dist_forest_irf_cpp <- function(fit, x, rf=NULL, n.core=1) {
@@ -107,10 +106,10 @@ dist_forest_irf_cpp <- function(fit, x, rf=NULL, n.core=1) {
   tree.id <- c(tree.id - 2, length(trees) - 1)
   
   # Initialize grid of all pairwise combinations for n observaitons
-  grid <- expand.grid(1:n, 1:n) %>% filter(Var1 > Var2)
+  grid <- expand.grid(0:(n-1), 0:(n-1)) %>% filter(Var1 > Var2)
   
   # Compute distance
-  dist.forest <- forestDist(no, nf, tree.id, grid$Var1 - 1, grid$Var2 - 1)
+  dist.forest <- forestDist(no, nf, tree.id, grid$Var1, grid$Var2)
   dist.forest <- dist.forest / ntree
   dist.forest <- 1 - dist.forest
   
