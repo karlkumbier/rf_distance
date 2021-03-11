@@ -1,4 +1,5 @@
 Package: rfdistance
+Type: Package
 Title: Random forest distance
 Version: 1.0.0
 Date: 2020-02-15
@@ -6,7 +7,12 @@ License: GPL-3
 Depends:
     R (>= 3.1.2),
 Imports:
-    iRF
+    iRF,
+    Rcpp (>= 1.0.6),
+    RcppArmadillo
+LinkingTo: 
+    Rcpp,
+    RcppArmadillo
 Author: Karl Kumbier
 Maintainer: Karl Kumbier <kkumbier@berkeley.edu>
 RoxygenNote: 7.1.1

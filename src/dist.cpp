@@ -5,6 +5,17 @@
 arma::mat outer(arma::mat);
 arma::mat treeDist(arma::mat, int);
 
+//' Computes distances between pairs of observations using iRF-encoded binary
+//' features.
+//'
+//' @param obsn node membership matrix indicating which leaf node observations
+//'   fall in for each tree, rows being observations, cols being trees.
+//' @param featn binary matrix indicating iRF decision path encodings, rows
+//'   being nodes, cols being features.
+//' @param idtree vector indicating rows of featn that correspond to new trees.
+//' @param ridx first index of a pair for which to compute distance.
+//' @param cidx second index of a pair for which to compute distance.
+//' @return Product of v1 and v2
 // [[Rcpp::export]]
 arma::mat forestDist(arma::umat obsn,
                      arma::mat featn,
@@ -21,7 +32,6 @@ arma::mat forestDist(arma::umat obsn,
   // pre-allocate matrix for pairwise distance 
   arma::mat rfdist(ridx.n_elem, 1, arma::fill::zeros);
 
-  // TODO: check loop indexing 
   for (int k = 0; k < (idtree.n_elem - 1); k++) {
 
     // compute leaf node distances for tree k
